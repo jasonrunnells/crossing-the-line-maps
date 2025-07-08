@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Island Explorer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    body { margin: 0; }
+    #map { height: 100vh; width: 100%; }
+
+    .leaflet-tooltip.island-label {
+      font-family: "Host Grotesk", sans-serif;
+      font-size: 14px;
+      font-weight: bold;
+      color: #000;
+      text-shadow:
+        -1px -1px 0 #fff,
+         1px -1px 0 #fff,
+        -1px  1px 0 #fff,
+         1px  1px 0 #fff;
+      background: none;
+      border: none;
+      box-shadow: none;
+      padding: 0;
+    }
+
+    .leaflet-tooltip.island-label::before {
+      display: none !important;
+    }
+
+    .popup-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+    }
+
+    .popup-table td {
+      padding: 2px 4px;
+      vertical-align: top;
+    }
+
+    .popup-table td:first-child {
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    #toggleLegend {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      padding: 0.4rem 0.5rem;
+      background: white;
+      border: 1px solid #131313;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #toggleLegend svg {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <button id="toggleLegend">
+    <svg xmlns="http://www.w3.org/2000/svg" height="16" width="16" fill="#131313" viewBox="0 0 16 16">
+      <rect width="14" height="2" x="1" y="2"></rect>
+      <rect width="10" height="2" x="1" y="7"></rect>
+      <rect width="6" height="2" x="1" y="12"></rect>
+    </svg>
+  </button>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([33.5, -119], 8);
+
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; <a href="https://www.esri.com">Esri</a> Ocean Basemap',
+      maxZoom: 18
+    }).addTo(map);
+
+    // CINMS Boundary
+    fetch('data/cinms.json')
+      .then(res => res.json())
+      .then(cinmsData => {
+        const cinmsLayer = L.geoJSON(cinmsData, {
+          style: {
+            color: null,
+            weight: 0,
+            fillColor: '#0070FF',
+            fillOpacity: 0.5
+          },
+          onEachFeature: (feature, layer) => {
+            layer.bindPopup(`<strong>CINMS Boundary</strong>`);
+          }
+        }).addTo(map);
+
+        // MPA Boundaries
+        fetch('data/mpa.json')
+          .then(res => res.json())
+          .then(mpaData => {
+            L.geoJSON(mpaData, {
+              style: feature => {
+                const type = feature.properties.Type || '';
+                let fill = '#0099cc';
+                if (type.includes('SMR') && !type.includes('No-bottom')) fill = '#38A800';
+                else if (type.includes('SMR') && type.includes('No-bottom')) fill = '#FFFF00';
+                else if (type.includes('SMCA')) fill = '#A900E6';
+                else if (type.includes('Special')) fill = '#FF0000';
+                return {
+                  fillColor: fill,
+                  fillOpacity: 1,
+                  color: null,
+                  weight: 0
+                };
+              },
+              onEachFeature: (feature, layer) => {
+                const p = feature.properties || {};
+                layer.bindPopup(
+                  `<strong>Marine Protected Area</strong>
+                   <div style="border-bottom: solid 1px #000;"></div>
+                   <table class="popup-table">
+                     <tr><td>Type:</td><td>${p.Type || 'N/A'}</td></tr>
+                     <tr><td>Name:</td><td>${p.FULLNAME || 'N/A'}</td></tr>
+                   </table>`
+                );
+              }
+            }).addTo(map);
+          });
+
+        // Island Points
+        fetch('data/islands.json')
+          .then(res => res.json())
+          .then(islandData => {
+            L.geoJSON(islandData, {
+              pointToLayer: (feature, latlng) => {
+                const marker = L.circleMarker(latlng, {
+                  radius: 4,
+                  fillColor: '#000',
+                  fillOpacity: 1,
+                  color: '#fff',
+                  weight: 1
+                }).addTo(map);
+
+                L.tooltip({
+                  permanent: true,
+                  direction: 'top',
+                  className: 'island-label',
+                  offset: [0, -3]
+                })
+                .setLatLng(latlng)
+                .setContent(feature.properties.Name || '')
+                .addTo(map);
+
+                return marker;
+              }
+            });
+          });
+
+        // Island Explorer polyline only
+        fetch('data/island_explorer.json')
+          .then(res => res.json())
+          .then(data => {
+            const islandExplorerLayer = L.geoJSON(data, {
+              style: {
+                color: '#FF00FF',
+                weight: 2,
+                opacity: 0.5,
+                lineCap: 'round'
+              }
+            }).addTo(map);
+
+            map.fitBounds(islandExplorerLayer.getBounds());
+          });
+      });
+
+    // Custom Legend
+    const legend = L.control({ position: 'bottomright' });
+
+    legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'info legend');
+      div.style.background = 'white';
+      div.style.padding = '0';
+      div.style.border = '1px solid #131313';
+      div.style.borderRadius = '10px';
+      div.style.fontFamily = '"Host Grotesk", sans-serif';
+      div.style.fontSize = '0.9rem';
+      div.style.lineHeight = '1.4';
+      div.style.position = 'relative';
+      div.style.marginRight = '1rem';
+
+      const header = document.createElement('div');
+      header.style.background = '#131313';
+      header.style.color = '#fff';
+      header.style.padding = '0.3rem 0.5rem';
+      header.style.borderTopLeftRadius = '10px';
+      header.style.borderTopRightRadius = '10px';
+      header.style.fontWeight = '700';
+      header.style.textAlign = 'center';
+      header.textContent = 'Legend';
+      div.appendChild(header);
+
+      const close = document.createElement('span');
+      close.id = 'legendClose';
+      close.innerHTML = '&times;';
+      close.style.position = 'absolute';
+      close.style.top = '-10px';
+      close.style.right = '-10px';
+      close.style.background = 'white';
+      close.style.border = '1px solid #131313';
+      close.style.borderRadius = '50%';
+      close.style.padding = '2px 6px';
+      close.style.cursor = 'pointer';
+      close.style.fontWeight = '700';
+      close.style.fontSize = '1rem';
+      close.style.lineHeight = '1';
+      div.appendChild(close);
+
+      const content = document.createElement('div');
+      content.style.padding = '0.5rem 1rem 0.75rem 1rem';
+      div.appendChild(content);
+
+      // Island
+      const islandRow = document.createElement('div');
+      islandRow.style.display = 'flex';
+      islandRow.style.alignItems = 'center';
+      islandRow.style.marginBottom = '4px';
+
+      const dotWrapper = document.createElement('span');
+      dotWrapper.style.display = 'inline-block';
+      dotWrapper.style.width = '14px';
+      dotWrapper.style.height = '14px';
+      dotWrapper.style.position = 'relative';
+
+      const dot = document.createElement('span');
+      dot.style.display = 'inline-block';
+      dot.style.width = '8px';
+      dot.style.height = '8px';
+      dot.style.background = '#000';
+      dot.style.border = '1px solid #fff';
+      dot.style.borderRadius = '50%';
+      dot.style.position = 'absolute';
+      dot.style.top = '50%';
+      dot.style.left = '50%';
+      dot.style.transform = 'translate(-50%, -50%)';
+
+      dotWrapper.appendChild(dot);
+      islandRow.appendChild(dotWrapper);
+
+      const islandLabel = document.createElement('span');
+      islandLabel.textContent = 'Island';
+      islandLabel.style.marginLeft = '9px';
+      islandRow.appendChild(islandLabel);
+      content.appendChild(islandRow);
+
+      // Separator
+      const sep1 = document.createElement('div');
+      sep1.style.height = '1px';
+      sep1.style.background = '#131313';
+      sep1.style.margin = '6px 0';
+      content.appendChild(sep1);
+
+      // Island Explorer line
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.marginBottom = '2px';
+
+      const line = document.createElement('span');
+      line.style.display = 'inline-block';
+      line.style.width = '14px';
+      line.style.height = '2px';
+      line.style.background = '#FF00FF';
+      line.style.marginRight = '8px';
+
+      const label = document.createElement('span');
+      label.textContent = 'Island Explorer';
+
+      row.appendChild(line);
+      row.appendChild(label);
+      content.appendChild(row);
+
+      // Separator
+      const sep2 = document.createElement('div');
+      sep2.style.height = '1px';
+      sep2.style.background = '#131313';
+      sep2.style.margin = '6px 0';
+      content.appendChild(sep2);
+
+      const categories = [
+        { label: 'CINMS Boundary', color: '#0070FF' },
+        { label: 'SMR', color: '#38A800' },
+        { label: 'SMR (No-bottom contact)', color: '#FFFF00' },
+        { label: 'SMCA', color: '#A900E6' },
+        { label: 'Special Closure', color: '#FF0000' }
+      ];
+
+      categories.forEach(c => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.marginBottom = '2px';
+
+        const box = document.createElement('span');
+        box.style.display = 'inline-block';
+        box.style.width = '14px';
+        box.style.height = '14px';
+        box.style.background = c.color;
+        box.style.border = '1px solid #131313';
+        box.style.marginRight = '6px';
+
+        row.appendChild(box);
+        const label = document.createElement('span');
+        label.textContent = c.label;
+        row.appendChild(label);
+        content.appendChild(row);
+      });
+
+      return div;
+    };
+
+    legend.addTo(map);
+
+    setTimeout(() => {
+      const legendDiv = document.querySelector('.legend');
+      if (window.innerWidth < 768) {
+        legendDiv.style.display = 'none';
+      }
+
+      document.getElementById('legendClose').addEventListener('click', () => {
+        legendDiv.style.display = 'none';
+      });
+
+      document.getElementById('toggleLegend').addEventListener('click', () => {
+        legendDiv.style.display = (legendDiv.style.display === 'none' || legendDiv.style.display === '') ? 'block' : 'none';
+      });
+    }, 0);
+  </script>
+</body>
+</html>
