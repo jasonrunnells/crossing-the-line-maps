@@ -8,3 +8,13 @@ Built with Leaflet and custom GeoJSON data, the maps display:
 - Spatial context around Anacapa and nearby islands
 
 These visualizations aim to support awareness, education, and potential monitoring of vessel behavior in ecologically sensitive waters.
+
+  <ul>
+    <li><a href="anacapa.html">Anacapa Island Map</a></li>
+    <li><a href="traffic.html">Combined Vessel Traffic</a></li>
+    <li><a href="island_adventure.html">Island Adventure Track</a></li>
+    <li><a href="island_explorer.html">Island Explorer Track</a></li>
+    <li><a href="islander.html">Islander Track</a></li>
+    <li><a href="vanguard.html">Vanguard Track</a></li>
+    <li><a href="boundaries.html">MPA Boundaries Overview</a></li>
+  </ul>
